@@ -2,6 +2,7 @@ use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
     StdResult,
 };
+use msg::ExecMsg;
 
 //contract logic. private so other cant manipulate
 mod contract;
@@ -11,11 +12,6 @@ pub mod msg;
 
 // mod for contract state
 mod state;
-
-#[entry_point]
-pub fn execute(_deps: DepsMut, _env: Env, _info: MessageInfo, _msg: Empty) -> StdResult<Response> {
-    Ok(Response::new())
-}
 
 // akin to constructor
 /**
@@ -42,6 +38,20 @@ pub fn query(_deps: Deps, _env: Env, msg: msg::QueryMsg) -> StdResult<Binary> {
 
     match msg {
         Value {} => to_json_binary(&contract::query::value(_deps)?),
+    }
+}
+
+#[entry_point]
+pub fn execute(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: msg::ExecMsg,
+) -> StdResult<Response> {
+    use msg::ExecMsg::*;
+
+    match msg {
+        Poke {} => contract::exec::poke(deps, info),
     }
 }
 
@@ -86,5 +96,39 @@ mod test {
             .unwrap();
 
         assert_eq!(resp, ValueResp { value: 0 });
+    }
+
+    #[test]
+    fn poke() {
+        //app obj is blockchain simulator
+        let mut app = App::default();
+
+        let sender = Addr::unchecked("sender");
+
+        //register contract in blockchain
+        let contract_id = app.store_code(counting_contract());
+
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                Addr::unchecked("sender"),
+                &QueryMsg::Value {},
+                &[],
+                "Counting Contract",
+                None,
+            )
+            .unwrap();
+
+        app.execute_contract(sender, contract_addr.clone(), &ExecMsg::Poke {}, &[])
+            .unwrap();
+
+        // wrap converts app object to query wrapper obj.
+        // Query wrapper obj can be used to query from chain
+        let resp: ValueResp = app
+            .wrap()
+            .query_wasm_smart(contract_addr, &QueryMsg::Value {})
+            .unwrap();
+
+        assert_eq!(resp, ValueResp { value: 1 });
     }
 }
