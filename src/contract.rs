@@ -29,11 +29,11 @@ pub mod exec {
         let value = COUNTER.load(deps.storage)? + 1;
         COUNTER.save(deps.storage, &value)?;
 
-        // let resp = Response::new()
-        //     .add_attribute("action", "poke")
-        //     .add_attribute("sender", info.sender.as_str())
-        //     .add_attribute("countr", value.to_string());
+        let resp = Response::new()
+            .add_attribute("action", "poke")
+            .add_attribute("sender", info.sender.as_str())
+            .add_attribute("countr", value.to_string());
 
-        Ok(Response::new())
+        Ok(resp)
     }
 }
