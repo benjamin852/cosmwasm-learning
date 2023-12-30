@@ -28,7 +28,7 @@ pub fn instantiate(
     _info: MessageInfo,
     _msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    contract::instantiate(_deps, _msg)
+    contract::instantiate(_deps, _info, _msg)
 }
 
 //binary is a serialized response for the query (Ex. json data)
@@ -52,6 +52,7 @@ pub fn execute(
 
     match msg {
         Donate {} => contract::exec::donate(deps, info),
+        Withdraw {} => contract::exec::withdraw(deps, _env, info),
     }
 }
 
@@ -194,5 +195,75 @@ mod test {
             .unwrap();
 
         assert_eq!(resp, ValueResp { value: 0 });
+    }
+    #[test]
+    fn withdraw() {
+        let owner = Addr::unchecked("owner");
+        let sender = Addr::unchecked("sender");
+        let sender2 = Addr::unchecked("sender-two");
+
+        //init atom balances for address
+        let mut app = AppBuilder::new().build(|router, _api, storage| {
+            router
+                .bank
+                .init_balance(storage, &sender, coins(10, ATOM))
+                .unwrap();
+            router
+                .bank
+                .init_balance(storage, &sender2, coins(5, ATOM))
+                .unwrap();
+        });
+
+        //register contract in blockchain
+        let contract_id = app.store_code(counting_contract());
+
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                owner.clone(),
+                &InstantiateMsg {
+                    minimal_donation: Coin::new(10, ATOM),
+                },
+                &[],
+                "Counting Contract",
+                None,
+            )
+            .unwrap();
+
+        app.execute_contract(
+            sender.clone(),
+            contract_addr.clone(),
+            &ExecMsg::Donate {},
+            &coins(10, ATOM),
+        )
+        .unwrap();
+
+        app.execute_contract(
+            sender2.clone(),
+            contract_addr.clone(),
+            &ExecMsg::Donate {},
+            &coins(5, ATOM),
+        )
+        .unwrap();
+
+        app.execute_contract(
+            owner.clone(),
+            contract_addr.clone(),
+            &ExecMsg::Withdraw {},
+            &[],
+        )
+        .unwrap();
+
+        //check balance transfer occured
+        assert_eq!(
+            app.wrap().query_all_balances(owner).unwrap(),
+            coins(15, ATOM)
+        );
+        assert_eq!(
+            app.wrap().query_all_balances(contract_addr).unwrap(),
+            vec![]
+        );
+        assert_eq!(app.wrap().query_all_balances(sender).unwrap(), vec![]);
+        assert_eq!(app.wrap().query_all_balances(sender2).unwrap(), vec![]);
     }
 }
