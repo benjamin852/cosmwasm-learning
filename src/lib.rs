@@ -2,7 +2,7 @@ use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
     StdResult,
 };
-use msg::ExecMsg;
+use msg::{ExecMsg, InstantiateMsg};
 
 //contract logic. private so other cant manipulate
 mod contract;
@@ -26,9 +26,9 @@ pub fn instantiate(
     _deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    _msg: Empty,
+    _msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    contract::instantiate(_deps)
+    contract::instantiate(_deps, _msg)
 }
 
 //binary is a serialized response for the query (Ex. json data)
@@ -51,7 +51,7 @@ pub fn execute(
     use msg::ExecMsg::*;
 
     match msg {
-        Poke {} => contract::exec::poke(deps, info),
+        Donate {} => contract::exec::donate(deps, info),
     }
 }
 
@@ -61,13 +61,15 @@ mod test {
     use crate::msg::{QueryMsg, ValueResp};
 
     use super::*;
-    use cosmwasm_std::{Addr, Empty};
-    use cw_multi_test::{App, Contract, ContractWrapper, Executor};
+    use cosmwasm_std::{coins, Addr, Coin, Empty};
+    use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor};
 
     fn counting_contract() -> Box<dyn Contract<Empty>> {
         let contract = ContractWrapper::new(execute, instantiate, query);
         Box::new(contract)
     }
+
+    const ATOM: &str = "atom";
 
     #[test]
     fn query_value() {
@@ -81,7 +83,9 @@ mod test {
             .instantiate_contract(
                 contract_id,
                 Addr::unchecked("sender"),
-                &QueryMsg::Value {},
+                &InstantiateMsg {
+                    minimal_donation: Coin::new(10, ATOM),
+                },
                 &[],
                 "Counting Contract",
                 None,
@@ -99,11 +103,16 @@ mod test {
     }
 
     #[test]
-    fn poke() {
-        //app obj is blockchain simulator
-        let mut app = App::default();
-
+    fn donate_with_funds() {
         let sender = Addr::unchecked("sender");
+
+        //init atom balances for address
+        let mut app = AppBuilder::new().build(|router, _api, storage| {
+            router
+                .bank
+                .init_balance(storage, &sender, coins(10, ATOM))
+                .unwrap();
+        });
 
         //register contract in blockchain
         let contract_id = app.store_code(counting_contract());
@@ -111,15 +120,70 @@ mod test {
         let contract_addr = app
             .instantiate_contract(
                 contract_id,
-                Addr::unchecked("sender"),
-                &QueryMsg::Value {},
+                sender.clone(),
+                &InstantiateMsg {
+                    minimal_donation: Coin::new(10, ATOM),
+                },
                 &[],
                 "Counting Contract",
                 None,
             )
             .unwrap();
 
-        app.execute_contract(sender, contract_addr.clone(), &ExecMsg::Poke {}, &[])
+        app.execute_contract(
+            sender.clone(),
+            contract_addr.clone(),
+            &ExecMsg::Donate {},
+            &coins(10, ATOM),
+        )
+        .unwrap();
+
+        // wrap converts app object to query wrapper obj.
+        // Query wrapper obj can be used to query from chain
+        let resp: ValueResp = app
+            .wrap()
+            .query_wasm_smart(contract_addr.clone(), &QueryMsg::Value {})
+            .unwrap();
+
+        assert_eq!(resp, ValueResp { value: 1 });
+
+        //check balance transfer occured
+        assert_eq!(app.wrap().query_all_balances(sender).unwrap(), vec![]);
+        assert_eq!(
+            app.wrap().query_all_balances(contract_addr).unwrap(),
+            coins(10, ATOM)
+        );
+    }
+
+    #[test]
+    fn donate_without_funds() {
+        let sender = Addr::unchecked("sender");
+
+        //init atom balances for address
+        let mut app = AppBuilder::new().build(|router, _api, storage| {
+            router
+                .bank
+                .init_balance(storage, &sender, coins(10, ATOM))
+                .unwrap();
+        });
+
+        //register contract in blockchain
+        let contract_id = app.store_code(counting_contract());
+
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                sender.clone(),
+                &InstantiateMsg {
+                    minimal_donation: Coin::new(10, ATOM),
+                },
+                &[],
+                "Counting Contract",
+                None,
+            )
+            .unwrap();
+
+        app.execute_contract(sender, contract_addr.clone(), &ExecMsg::Donate {}, &[])
             .unwrap();
 
         // wrap converts app object to query wrapper obj.
@@ -129,6 +193,6 @@ mod test {
             .query_wasm_smart(contract_addr, &QueryMsg::Value {})
             .unwrap();
 
-        assert_eq!(resp, ValueResp { value: 1 });
+        assert_eq!(resp, ValueResp { value: 0 });
     }
 }
