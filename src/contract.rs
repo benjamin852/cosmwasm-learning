@@ -24,7 +24,7 @@ pub mod query {
 }
 
 pub mod exec {
-    use cosmwasm_std::{BankMsg, DepsMut, Env, MessageInfo, Response, StdResult};
+    use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdResult, Uint128};
 
     use crate::{
         error::ContractError,
@@ -35,21 +35,43 @@ pub mod exec {
         // COUNTER.update(deps.storage, |counter| -> StdResult<_> { Ok(counter + 1) })?;
 
         let minimal_donation = MINIMAL_DONATION.load(deps.storage)?;
-        let mut value = COUNTER.load(deps.storage)?;
+        let mut counter: u64 = COUNTER.load(deps.storage)?;
 
         if minimal_donation.amount.is_zero()
             || info.funds.iter().any(|coin| {
                 coin.denom == minimal_donation.denom && coin.amount >= minimal_donation.amount
             })
         {
-            value += 1;
-            COUNTER.save(deps.storage, &value)?;
+            counter += 1;
+            COUNTER.save(deps.storage, &counter)?;
         }
 
         let resp = Response::new()
             .add_attribute("action", "donate")
             .add_attribute("sender", info.sender.as_str())
-            .add_attribute("counter", value.to_string());
+            .add_attribute("counter", counter.to_string());
+
+        Ok(resp)
+    }
+
+    pub fn reset(
+        deps: DepsMut,
+        info: MessageInfo,
+        counter: u64,
+    ) -> Result<Response, ContractError> {
+        let owner = OWNER.load(deps.storage)?;
+        if info.sender != owner {
+            return Err(ContractError::Unauthorized {
+                owner: owner.to_string(),
+            });
+        }
+
+        COUNTER.save(deps.storage, &counter)?;
+
+        let resp = Response::new()
+            .add_attribute("action", "reset")
+            .add_attribute("sender", info.sender.as_str())
+            .add_attribute("counter", counter.to_string());
 
         Ok(resp)
     }
@@ -63,7 +85,7 @@ pub mod exec {
             });
         }
 
-        //get funds from blockchain
+        //get contract balance from blockchain
         let funds = deps.querier.query_all_balances(&env.contract.address)?;
 
         //send bank msg to blockchain
@@ -80,5 +102,49 @@ pub mod exec {
             .add_attribute("sender", info.sender.as_str());
 
         Ok(res)
+    }
+
+    pub fn withdraw_to(
+        deps: DepsMut,
+        env: Env,
+        info: MessageInfo,
+        receiver: String,
+        funds: Vec<Coin>,
+    ) -> Result<Response, ContractError> {
+        let owner = OWNER.load(deps.storage)?;
+
+        if info.sender != owner {
+            return Err(ContractError::Unauthorized {
+                owner: owner.to_string(),
+            });
+        }
+
+        let mut balance = deps.querier.query_all_balances(&env.contract.address)?;
+
+        //calc amount
+        if !funds.is_empty() {
+            for coin in &mut balance {
+                let limit = funds
+                    .iter()
+                    .find(|c| c.denom == coin.denom)
+                    .map(|c| c.amount)
+                    .unwrap_or(Uint128::zero());
+
+                coin.amount = std::cmp::min(coin.amount, limit);
+            }
+        }
+
+        //send $$
+        let bank_msg = BankMsg::Send {
+            to_address: receiver,
+            amount: balance,
+        };
+
+        let resp = Response::new()
+            .add_message(bank_msg)
+            .add_attribute("action", "withdraw")
+            .add_attribute("sender", info.sender.as_str());
+
+        Ok(resp)
     }
 }

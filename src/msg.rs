@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
+    #[serde(default)]
+    pub counter: u64,
     pub minimal_donation: Coin,
 }
 
@@ -15,17 +17,25 @@ pub enum QueryMsg {
     Value {},
 }
 
-//struct since no need to distringuinsh between responses
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub struct ValueResp {
-    pub value: u64,
-}
-
 //used to update state
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecMsg {
     Donate {},
+    Reset {
+        #[serde(default)]
+        counter: u64,
+    },
     Withdraw {},
+    WithdrawTo {
+        receiver: String,
+        #[serde(default)]
+        funds: Vec<Coin>,
+    },
+}
+//struct since no need to distringuinsh between responses
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct ValueResp {
+    pub value: u64,
 }
