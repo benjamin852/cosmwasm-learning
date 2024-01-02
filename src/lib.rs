@@ -1,8 +1,8 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
-    StdResult,
+    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
 };
-use msg::{ExecMsg, InstantiateMsg};
+use error::ContractError;
+use msg::InstantiateMsg;
 
 //contract logic. private so other cant manipulate
 mod contract;
@@ -12,6 +12,9 @@ pub mod msg;
 
 // mod for contract state
 mod state;
+
+// mod for err handling
+pub mod error;
 
 // akin to constructor
 /**
@@ -47,11 +50,11 @@ pub fn execute(
     _env: Env,
     info: MessageInfo,
     msg: msg::ExecMsg,
-) -> StdResult<Response> {
+) -> Result<Response, ContractError> {
     use msg::ExecMsg::*;
 
     match msg {
-        Donate {} => contract::exec::donate(deps, info),
+        Donate {} => contract::exec::donate(deps, info).map_err(ContractError::from),
         Withdraw {} => contract::exec::withdraw(deps, _env, info),
     }
 }
@@ -265,5 +268,42 @@ mod test {
         );
         assert_eq!(app.wrap().query_all_balances(sender).unwrap(), vec![]);
         assert_eq!(app.wrap().query_all_balances(sender2).unwrap(), vec![]);
+    }
+    #[test]
+    fn unauthorized_withdraw() {
+        let owner = Addr::unchecked("owner");
+        let member = Addr::unchecked("member");
+
+        //init atom balances for address
+        let mut app = App::default();
+
+        //register contract in blockchain
+        let contract_id = app.store_code(counting_contract());
+
+        let contract_addr = app
+            .instantiate_contract(
+                contract_id,
+                owner.clone(),
+                &InstantiateMsg {
+                    minimal_donation: Coin::new(10, ATOM),
+                },
+                &[],
+                "Counting Contract",
+                None,
+            )
+            .unwrap();
+
+        let err = app
+            .execute_contract(member, contract_addr, &ExecMsg::Withdraw {}, &[])
+            .unwrap_err();
+
+        //verify err
+        assert_eq!(
+            ContractError::Unauthorized {
+                owner: owner.into()
+            },
+            //downcast abstract err type to contract err
+            err.downcast().unwrap()
+        );
     }
 }

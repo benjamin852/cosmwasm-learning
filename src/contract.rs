@@ -24,9 +24,12 @@ pub mod query {
 }
 
 pub mod exec {
-    use cosmwasm_std::{BankMsg, DepsMut, Env, MessageInfo, Response, StdError, StdResult};
+    use cosmwasm_std::{BankMsg, DepsMut, Env, MessageInfo, Response, StdResult};
 
-    use crate::state::{COUNTER, MINIMAL_DONATION, OWNER};
+    use crate::{
+        error::ContractError,
+        state::{COUNTER, MINIMAL_DONATION, OWNER},
+    };
     pub fn donate(deps: DepsMut, info: MessageInfo) -> StdResult<Response> {
         // Cleaner way to update state (for future)
         // COUNTER.update(deps.storage, |counter| -> StdResult<_> { Ok(counter + 1) })?;
@@ -51,11 +54,13 @@ pub mod exec {
         Ok(resp)
     }
 
-    pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> StdResult<Response> {
+    pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
         let owner = OWNER.load(deps.storage)?;
 
         if info.sender != owner {
-            return Err(StdError::generic_err("not owner"));
+            return Err(ContractError::Unauthorized {
+                owner: owner.into(),
+            });
         }
 
         //get funds from blockchain
