@@ -1,8 +1,9 @@
+use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Coin;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct InstantiateMsg {
     #[serde(default)]
     pub counter: u64,
@@ -11,15 +12,16 @@ pub struct InstantiateMsg {
 
 //query msgs deserialize to this type
 //enum since different queryMsgs will have different value
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
+    #[returns(ValueResp)]
     Value {},
 }
 
 //used to update state
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
+
+#[cw_serde]
 pub enum ExecMsg {
     Donate {},
     Reset {
@@ -34,8 +36,7 @@ pub enum ExecMsg {
     },
 }
 //struct since no need to distringuinsh between responses
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub struct ValueResp {
     pub value: u64,
 }

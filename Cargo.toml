@@ -12,6 +12,8 @@ cosmwasm-std = "1.0.0"
 cw-storage-plus = "1.2.0"
 serde = "1.0.0"
 thiserror = "1.0.0"
+schemars = "0.8.10"
+cosmwasm-schema = "1.1"
 
 [dev-dependencies]
 cw-multi-test = "0.20.0"
